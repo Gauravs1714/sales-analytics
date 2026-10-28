@@ -95,7 +95,7 @@ def read_file(name, raw):
     return pd.read_excel(io.BytesIO(raw))
 
 
-def clean(df):
+def clean(df, drop_duplicates=True):
     """Clean any dataframe. Returns (clean_df, column_types, report)."""
     df = df.copy()
     df.columns = [str(c).strip() for c in df.columns]
@@ -105,7 +105,9 @@ def clean(df):
     df = df.dropna(how="all")
     report["empty_removed"] = int(n - len(df))
     n = len(df)
-    df = df.drop_duplicates()
+    report["duplicates_found"] = int(df.duplicated().sum())
+    if drop_duplicates:  # the dashboard sets this to False and lets the user choose
+        df = df.drop_duplicates()
     report["duplicates_removed"] = int(n - len(df))
     types = {c: detect_type(c, df[c]) for c in df.columns}
     df = convert_types(df, types).reset_index(drop=True)
@@ -286,6 +288,20 @@ def fill_missing(df, types, mode):
     for c in nums:
         df[c] = df[c].fillna(0 if mode == "zero" else df[c].mean())
     return df
+
+
+def dedupe(df, mode="exact", keys=None, keep="first"):
+    """Remove duplicate rows. Returns (df, number_removed).
+    mode: exact = all columns match | keys = only the chosen columns match | none = keep everything.
+    Letter case and extra spaces are ignored when comparing."""
+    if mode == "none" or df.empty:
+        return df, 0
+    cols = list(df.columns)
+    if mode == "keys":
+        cols = [k for k in (keys or []) if k in df.columns] or cols
+    norm = df[cols].astype(str).apply(lambda c: c.str.strip().str.lower())
+    dup = norm.duplicated(keep=keep).values
+    return df[~dup], int(dup.sum())
 
 
 def add_calc_column(df, types, a, op, b, name):
