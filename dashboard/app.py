@@ -203,14 +203,15 @@ def kpi(col, i, label, value):
 st.markdown(f'<div class="hero"><h1>{D["name"]}</h1><p>{len(df):,} rows · {len(cols)} columns · '
             f'{len(nums)} numbers · {len(dates)} dates · {len(cats)} categories</p></div>', unsafe_allow_html=True)
 
-if S.get("report") and S.get("ds") == ds:
+if D.get("report"):
     r = D["report"]
-    with st.expander("🧹 Cleaning report for this file"):
-        a, b, c, d = st.columns(4)
+    with st.expander("🧹 Cleaning report (updates when you change the Duplicates setting)", expanded=True):
+        a, b, c, d, e = st.columns(5)
         a.metric("Rows read", r["rows_read"])
         b.metric("Empty rows removed", r["empty_removed"])
         c.metric("Exact duplicates found", r.get("duplicates_found", r["duplicates_removed"]))
-        d.metric("Rows loaded", r["rows_loaded"])
+        d.metric("Removed by your Duplicates setting", removed)
+        e.metric("Rows used in analysis", len(base))
 
 cards = [("Records", nf(k["records"]))]
 if measure:
