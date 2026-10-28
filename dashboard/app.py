@@ -40,7 +40,7 @@ def add_dataset(name, raw):
     if df.empty or len(df.columns) == 0:
         st.sidebar.error("The file has no data. Add a header row and some rows.")
         return
-    clean, types, report = an.clean(df)
+    clean, types, report = an.clean(df, drop_duplicates=False)
     if clean.empty:
         st.sidebar.error("No rows were left after cleaning.")
         return
@@ -131,7 +131,24 @@ with st.sidebar:
     kind = st.radio("Trend chart", ["Bars", "Line", "Area"], horizontal=True)
     miss = st.selectbox("Empty numbers", list(MISSING), format_func=MISSING.get, key=f"ms{ds}")
 
-    st.markdown("### 3. Filters")
+    st.markdown("### 3. Duplicates")
+    DMODE = {"exact": "Exact copies (all columns match)", "keys": "Chosen columns match", "none": "Don't remove any"}
+    dmode = st.radio("Remove duplicate rows by", list(DMODE), format_func=DMODE.get, key=f"dm{ds}")
+    dkeys, dkeep = None, "first"
+    if dmode == "keys":
+        guess = [c for c in df.columns if types[c] == "id"][:1] + [c for c in df.columns if re.search("product|item|sku", c, re.I)][:1]
+        dkeys = st.multiselect("Columns that identify one row", list(df.columns), default=guess or list(df.columns)[:1], key=f"dk{ds}")
+        dkeep = st.radio("Keep the", ["first", "last"], horizontal=True, key=f"dp{ds}")
+    base, removed = an.dedupe(df, dmode, dkeys, dkeep)
+    st.caption(f"{removed:,} duplicate row(s) removed by this setting.")
+    idc = [c for c in df.columns if types[c] == "id"][:1]
+    if dmode == "exact" and idc:
+        shared = int(base[idc[0]].duplicated(keep=False).sum())
+        if shared:
+            st.caption(f"⚠ {shared:,} rows share a {idc[0]} with another row but differ in other columns. "
+                       f"This is normal if one {idc[0]} has several lines. If not, choose 'Chosen columns'.")
+
+    st.markdown("### 4. Filters")
     filters, date_from, date_to = {}, None, None
     for c in [c for c in cols if c["type"] == "cat" and c.get("values")][:5]:
         chosen = st.multiselect(c["name"], c["values"], key=f"f{ds}{c['name']}")
@@ -161,7 +178,7 @@ with st.sidebar:
         st.rerun()
 
 # ------------------------------------------------------------------ analysis
-work = an.fill_missing(df, types, miss)
+work = an.fill_missing(base, types, miss)
 view = an.apply_filters(work, filters, date_col, date_from, date_to)
 params = {"measure": measure, "agg": agg, "group_by": group, "split_by": split, "date_col": date_col, "grain": grain,
           "target": target, "forecast": fc, "date_from": date_from, "date_to": date_to, "filters": filters}
@@ -192,7 +209,7 @@ if S.get("report") and S.get("ds") == ds:
         a, b, c, d = st.columns(4)
         a.metric("Rows read", r["rows_read"])
         b.metric("Empty rows removed", r["empty_removed"])
-        c.metric("Duplicates removed", r["duplicates_removed"])
+        c.metric("Exact duplicates found", r.get("duplicates_found", r["duplicates_removed"]))
         d.metric("Rows loaded", r["rows_loaded"])
 
 cards = [("Records", nf(k["records"]))]
